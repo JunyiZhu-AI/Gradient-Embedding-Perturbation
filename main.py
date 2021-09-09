@@ -25,7 +25,7 @@ parser = argparse.ArgumentParser(description='Differentially Private learning wi
 parser.add_argument('--dataset', default='cifar10', type=str, help='dataset name')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 parser.add_argument('--sess', default='resnet20_cifar10', type=str, help='session name')
-parser.add_argument('--seed', default=2, type=int, help='random seed')
+parser.add_argument('--seed', default=-1, type=int, help='random seed')
 parser.add_argument('--weight_decay', default=2e-4, type=float, help='weight decay')
 parser.add_argument('--batchsize', default=1000, type=int, help='batch size')
 parser.add_argument('--n_epoch', default=200, type=int, help='total number of epochs')
@@ -72,7 +72,7 @@ if(args.seed != -1):
 print('==> Preparing data..')
 ## preparing data for training && testing
 if(args.dataset == 'svhn'):  ## For SVHN, we concatenate training samples and extra samples to build the training set.
-    trainloader, extraloader, testloader, n_training, n_test = get_data_loader('svhn', batchsize = args.batchsize)
+    trainloader, extraloader, testloader, n_training, n_test = get_data_loader('svhn', batchsize=args.batchsize)
     for train_samples, train_labels in trainloader:
         break
     for extra_samples, extra_labels in extraloader:
@@ -81,7 +81,7 @@ if(args.dataset == 'svhn'):  ## For SVHN, we concatenate training samples and ex
     train_labels = torch.cat([train_labels, extra_labels], dim=0)
 
 else:
-    trainloader, testloader, n_training, n_test = get_data_loader('cifar10', batchsize = args.batchsize)
+    trainloader, testloader, n_training, n_test = get_data_loader('cifar10', batchsize=args.batchsize)
     train_samples, train_labels = None, None
 ## preparing auxiliary data
 num_public_examples = args.aux_data_size
@@ -97,8 +97,10 @@ if('cifar' in args.aux_dataset):
         break
 else:
     public_inputs = torch.load('imagenet_examples_2000')[:num_public_examples]
-if(not args.real_labels):
+
+if not args.real_labels:
     public_targets = torch.randint(high=10, size=(num_public_examples,))
+
 public_inputs, public_targets = public_inputs.cuda(), public_targets.cuda()
 print('# of training examples: ', n_training, '# of testing examples: ', n_test, '# of auxiliary examples: ', num_public_examples)
 
