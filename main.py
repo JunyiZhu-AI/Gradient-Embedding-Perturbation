@@ -28,6 +28,7 @@ parser.add_argument('--sess', default='resnet20_cifar10', type=str, help='sessio
 parser.add_argument('--seed', default=-1, type=int, help='random seed')
 parser.add_argument('--weight_decay', default=2e-4, type=float, help='weight decay')
 parser.add_argument('--batchsize', default=1000, type=int, help='batch size')
+parser.add_argument('--batch_partitions', default=1, type=int, help='partitioni into small batches')
 parser.add_argument('--n_epoch', default=200, type=int, help='total number of epochs')
 parser.add_argument('--lr', default=0.1, type=float, help='base learning rate (default=0.1)')
 parser.add_argument('--momentum', default=0.9, type=float, help='value of momentum')
@@ -61,7 +62,7 @@ if(args.real_labels):
 use_cuda = True
 best_acc = 0  
 start_epoch = 0  
-batch_size = args.batchsize
+batchsize = args.batchsize // args.batch_partitions
 
 if(args.seed != -1): 
     torch.manual_seed(args.seed)
@@ -72,7 +73,7 @@ if(args.seed != -1):
 print('==> Preparing data..')
 ## preparing data for training && testing
 if(args.dataset == 'svhn'):  ## For SVHN, we concatenate training samples and extra samples to build the training set.
-    trainloader, extraloader, testloader, n_training, n_test = get_data_loader('svhn', batchsize=args.batchsize)
+    trainloader, extraloader, testloader, n_training, n_test = get_data_loader('svhn', batchsize=batchsize)
     for train_samples, train_labels in trainloader:
         break
     for extra_samples, extra_labels in extraloader:
@@ -81,7 +82,7 @@ if(args.dataset == 'svhn'):  ## For SVHN, we concatenate training samples and ex
     train_labels = torch.cat([train_labels, extra_labels], dim=0)
 
 else:
-    trainloader, testloader, n_training, n_test = get_data_loader('cifar10', batchsize=args.batchsize)
+    trainloader, testloader, n_training, n_test = get_data_loader('cifar10', batchsize=batchsize)
     train_samples, train_labels = None, None
 ## preparing auxiliary data
 num_public_examples = args.aux_data_size
@@ -106,14 +107,14 @@ print('# of training examples: ', n_training, '# of testing examples: ', n_test,
 
 
 print('\n==> Computing noise scale for privacy budget (%.1f, %f)-DP'%(args.eps, args.delta))
-sampling_prob=args.batchsize/n_training
+sampling_prob = args.batchsize/n_training
 steps = int(args.n_epoch/sampling_prob)
 sigma, eps = get_sigma(sampling_prob, steps, args.eps, args.delta, rgp=args.rgp)
 noise_multiplier0 = noise_multiplier1 = sigma
 print('noise scale for gradient embedding: ', noise_multiplier0, 'noise scale for residual gradient: ', noise_multiplier1, '\n rgp enabled: ', args.rgp, 'privacy guarantee: ', eps)
 
 print('\n==> Creating GEP class instance')
-gep = GEP(args.num_bases, args.batchsize, args.clip0, args.clip1, args.power_iter).cuda()
+gep = GEP(args.num_bases, batchsize, args.clip0, args.clip1, args.power_iter).cuda()
 ## attach auxiliary data to GEP instance
 gep.public_inputs = public_inputs
 gep.public_targets = public_targets
@@ -185,7 +186,7 @@ def train(epoch):
     correct = 0
     total = 0
     t0 = time.time()
-    steps = n_training//args.batchsize
+    steps = n_training//batchsize
 
     if(train_samples == None): # using pytorch data loader for CIFAR10
         loader = iter(trainloader)
@@ -193,65 +194,66 @@ def train(epoch):
         sample_idxes = np.arange(n_training)
         np.random.shuffle(sample_idxes)
 
+    theta = torch.zeros([999], dtype=torch.float32, device='cuda')
+    residual = torch.zeros([num_params], dtype=torch.float32, device='cuda')
+    mini_batch = 0
     for batch_idx in range(steps):
         if(args.dataset=='svhn'):
-            current_batch_idxes = sample_idxes[batch_idx*args.batchsize : (batch_idx+1)*args.batchsize]
+            current_batch_idxes = sample_idxes[batch_idx*batchsize : (batch_idx+1)*batchsize]
             inputs, targets = train_samples[current_batch_idxes], train_labels[current_batch_idxes]
         else:
             inputs, targets = next(loader)
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
 
-        if(args.private):
-            logging = batch_idx % 20 == 0
-            ## compute anchor subspace
-            optimizer.zero_grad()
+        logging = batch_idx % 20 == 0
+        ## compute anchor subspace
+        optimizer.zero_grad()
+        if mini_batch == 0:
             net.gep.get_anchor_space(net, loss_func=loss_func, logging=logging)
-            ## collect batch gradients
-            batch_grad_list = []
-            optimizer.zero_grad()
-            outputs = net(inputs)
-            loss = loss_func(outputs, targets)
-            with backpack(BatchGrad()):
-                loss.backward()
-            for p in net.parameters():
-                batch_grad_list.append(p.grad_batch.reshape(p.grad_batch.shape[0], -1))
-                del p.grad_batch
-            ## compute gradient embeddings and residual gradients
-            clipped_theta, residual_grad, target_grad = net.gep(flatten_tensor(batch_grad_list), logging = logging)
+        ## collect batch gradients
+        batch_grad_list = []
+        optimizer.zero_grad()
+        outputs = net(inputs)
+        loss = loss_func(outputs, targets)
+        with backpack(BatchGrad()):
+            loss.backward()
+        for p in net.parameters():
+            batch_grad_list.append(p.grad_batch.reshape(p.grad_batch.shape[0], -1))
+            del p.grad_batch
+        ## compute gradient embeddings and residual gradients
+        clipped_theta, residual_grad, _ = net.gep(flatten_tensor(batch_grad_list), logging = logging)
+        theta += clipped_theta
+        residual += residual_grad
+        mini_batch += 1
+
+        if mini_batch == args.batch_partitions:
             ## add noise to guarantee differential privacy
-            theta_noise = torch.normal(0, noise_multiplier0*args.clip0/args.batchsize, size=clipped_theta.shape, device=clipped_theta.device)
-            grad_noise = torch.normal(0, noise_multiplier1*args.clip1/args.batchsize, size=residual_grad.shape, device=residual_grad.device)
-            clipped_theta += theta_noise
-            residual_grad += grad_noise
+            theta_noise = torch.normal(0, noise_multiplier0*args.clip0/args.batchsize, size=theta.shape, device=theta.device)
+            grad_noise = torch.normal(0, noise_multiplier1*args.clip1/args.batchsize, size=residual.shape, device=residual.device)
+            theta = theta / args.batch_partitions + theta_noise
+            residual = residual / args.batch_partitions + grad_noise
             ## update with Biased-GEP or GEP
             if(args.rgp):
-                noisy_grad = gep.get_approx_grad(clipped_theta) + residual_grad
+                noisy_grad = gep.get_approx_grad(theta) + residual
             else:
-                noisy_grad = gep.get_approx_grad(clipped_theta)
-            if(logging):
-                print('target grad norm: %.2f, noisy approximation norm: %.2f'%(target_grad.norm().item(), noisy_grad.norm().item()))
+                noisy_grad = gep.get_approx_grad(theta)
+
             ## make use of noisy gradients
             offset = 0
             for p in net.parameters():
                 shape = p.grad.shape
                 numel = p.grad.numel()
                 p.grad.data = noisy_grad[offset:offset+numel].view(shape) #+ 0.1*torch.mean(pub_grad, dim=0).view(shape)
-                offset+=numel
-        else:
-            optimizer.zero_grad()
-            outputs = net(inputs)
-            loss = loss_func(outputs, targets)
-            loss.backward()
-            try:
-                for p in net.parameters():
-                    del p.grad_batch
-            except:
-                pass
-        optimizer.step()
+                offset += numel
+            optimizer.step()
+
+            mini_batch = 0
+            theta = torch.zeros([999], dtype=torch.float32, device='cuda')
+            residual = torch.zeros([num_params], dtype=torch.float32, device='cuda')
+
         step_loss = loss.item()
-        if(args.private):
-            step_loss /= inputs.shape[0]
+        step_loss /= inputs.shape[0]
         train_loss += step_loss
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
