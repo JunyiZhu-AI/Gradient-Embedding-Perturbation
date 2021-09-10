@@ -1,10 +1,11 @@
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import torchvision
-
+import pandas
 import os
 import argparse
 import csv
@@ -298,18 +299,22 @@ def test(epoch):
     return (test_loss/batch_idx, acc)
 
 
-print('\n==> Strat training')
+print('\n==> Start training')
 
 for epoch in range(start_epoch, args.n_epoch):
     lr = adjust_learning_rate(optimizer, args.lr, epoch, all_epoch=args.n_epoch)
     train_loss, train_acc = train(epoch)
     test_loss, test_acc = test(epoch)
 
-try:
-    os.mkdir('approx_errors')
-except:
-    pass
-import pickle
-bfile=open('approx_errors/'+args.sess+'.pickle', 'wb')
-pickle.dump(net.gep.approx_error, bfile)
-bfile.close()
+res = pd.DataFrame({'best_acc': best_acc}, index=0)
+res.to_csv('./res.csv', index=False)
+
+
+# try:
+#     os.mkdir('approx_errors')
+# except:
+#     pass
+# import pickle
+# bfile=open('approx_errors/'+args.sess+'.pickle', 'wb')
+# pickle.dump(net.gep.approx_error, bfile)
+# bfile.close()
