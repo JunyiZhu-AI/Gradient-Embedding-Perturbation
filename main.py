@@ -177,7 +177,7 @@ gep.num_param_list = group_params(num_params, args.num_groups)
 optimizer = optim.SGD(
         net.parameters(), 
         lr=args.lr, 
-        momentum=args.momentum, 
+        # momentum=args.momentum, 
         weight_decay=args.weight_decay)
 
 def train(epoch):
