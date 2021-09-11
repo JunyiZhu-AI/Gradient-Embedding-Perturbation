@@ -307,7 +307,7 @@ for epoch in range(start_epoch, args.n_epoch):
     train_loss, train_acc = train(epoch)
     test_loss, test_acc = test(epoch)
 
-res = pd.DataFrame({'best_acc': best_acc}, index=0)
+res = pd.DataFrame({'best_acc': best_acc}, index=[0])
 res.to_csv(f'./{args.process}res.csv', index=False)
 
 
