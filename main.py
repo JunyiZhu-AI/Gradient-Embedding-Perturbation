@@ -269,9 +269,9 @@ def train(epoch, mask):
         correct += predicted.eq(targets.data).float().cpu().sum()
         acc = 100.*float(correct)/float(total)
     t1 = time.time()
-    print('Train loss:%.5f' % (train_loss/(batch_idx+1)), 'time: %d s' % (t1-t0), 'train acc:%.1f' % acc,
-          'sparsity:%.1f' % mask.numel()/num_params, end=' ')
-    return (train_loss/batch_idx, acc)
+    print(f'Train loss:{train_loss/(batch_idx+1):.2f}, time: {t1-t0}, train acc: {acc:.2f}, ' +
+          f'sparsity: {mask.numel()/num_params:.2f}')
+    return train_loss/batch_idx, acc
 
 
 def test(epoch):
