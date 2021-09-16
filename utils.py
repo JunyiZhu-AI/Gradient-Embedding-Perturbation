@@ -28,8 +28,8 @@ def get_data_loader(dataset, batchsize):
         return trainloader, extraloader, testloader, len(trainset)+len(extraset), len(testset)
     else:
         transform_train = transforms.Compose([
-        # transforms.RandomCrop(32, padding=4),
-        # transforms.RandomHorizontalFlip(),
+        transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         ])
