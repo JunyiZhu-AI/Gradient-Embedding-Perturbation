@@ -107,20 +107,23 @@ class GEP(nn.Module):
         else:
             return torch.cat(grad_list)
 
-    def get_anchor_gradients(self, net, loss_func):
+    def get_anchor_gradients(self, net, loss_func, mask):
         public_inputs, public_targets = self.public_inputs, self.public_targets
         outputs = net(public_inputs)
         loss = loss_func(outputs, public_targets) 
         with backpack(BatchGrad()):
             loss.backward()
-        cur_batch_grad_list = [] 
+        batch_grad = []
         for p in net.parameters():
-            cur_batch_grad_list.append(p.grad_batch.reshape(p.grad_batch.shape[0], -1))
+            batch_grad.append(p.grad_batch.reshape(p.grad_batch.shape[0], -1))
             del p.grad_batch
-        return flatten_tensor(cur_batch_grad_list)
+        batch_grad = torch.cat(batch_grad, dim=1)
+        for grad in batch_grad:
+            grad[mask] = 0
+        return batch_grad
 
-    def get_anchor_space(self, net, loss_func, logging=False):
-        anchor_grads = self.get_anchor_gradients(net, loss_func)
+    def get_anchor_space(self, net, loss_func, mask, logging=False):
+        anchor_grads = self.get_anchor_gradients(net, loss_func, mask)
         with torch.no_grad():
             num_param_list = self.num_param_list
             num_anchor_grads = anchor_grads.shape[0]

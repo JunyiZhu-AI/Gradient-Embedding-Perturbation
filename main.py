@@ -40,6 +40,8 @@ parser.add_argument('--momentum', default=0.9, type=float, help='value of moment
 parser.add_argument('--private', '-p', action='store_true', help='enable differential privacy')
 parser.add_argument('--eps', default=8., type=float, help='privacy parameter epsilon')
 parser.add_argument('--delta', default=1e-5, type=float, help='desired delta')
+parser.add_argument('--freeze_end', default=-1, type=int, help='Gradual exit end epoch.')
+parser.add_argument('--freeze_rate', default=0, type=float, help='Percentage of paramters get exited finally.')
 
 parser.add_argument('--rgp', action='store_true', help='use residual gradient perturbation or not')
 parser.add_argument('--clip0', default=5., type=float, help='clipping threshold for gradient embedding')
@@ -181,7 +183,7 @@ optimizer = optim.SGD(
         momentum=args.momentum, 
         weight_decay=args.weight_decay)
 
-def train(epoch):
+def train(epoch, mask):
     print('\nEpoch: %d' % epoch)
     net.train()
     train_loss = 0
@@ -212,19 +214,22 @@ def train(epoch):
         ## compute anchor subspace
         optimizer.zero_grad()
         if mini_batch == 0:
-            net.gep.get_anchor_space(net, loss_func=loss_func, logging=logging)
+            net.gep.get_anchor_space(net, loss_func=loss_func, mask=mask, logging=logging)
         ## collect batch gradients
-        batch_grad_list = []
+        batch_grad = []
         optimizer.zero_grad()
         outputs = net(inputs)
         loss = loss_func(outputs, targets)
         with backpack(BatchGrad()):
             loss.backward()
         for p in net.parameters():
-            batch_grad_list.append(p.grad_batch.reshape(p.grad_batch.shape[0], -1))
+            batch_grad.append(p.grad_batch.reshape(p.grad_batch.shape[0], -1))
             del p.grad_batch
+        batch_grad = torch.cat(batch_grad, dim=1)
+        for grad in batch_grad:
+            grad[mask] = 0
         ## compute gradient embeddings and residual gradients
-        clipped_theta, residual_grad, _ = net.gep(flatten_tensor(batch_grad_list), logging = logging)
+        clipped_theta, residual_grad, _ = net.gep(batch_grad, logging=logging)
         theta += clipped_theta
         residual += residual_grad
         mini_batch += 1
@@ -240,6 +245,7 @@ def train(epoch):
                 noisy_grad = gep.get_approx_grad(theta) + residual
             else:
                 noisy_grad = gep.get_approx_grad(theta)
+            noisy_grad[mask] = 0
 
             ## make use of noisy gradients
             offset = 0
@@ -262,7 +268,8 @@ def train(epoch):
         correct += predicted.eq(targets.data).float().cpu().sum()
         acc = 100.*float(correct)/float(total)
     t1 = time.time()
-    print('Train loss:%.5f'%(train_loss/(batch_idx+1)), 'time: %d s'%(t1-t0), 'train acc:', acc, end=' ')
+    print('Train loss:%.5f' % (train_loss/(batch_idx+1)), 'time: %d s' % (t1-t0), 'train acc:.1f' % acc,
+          'sparsity:.1f' % mask.numel()/num_params, end=' ')
     return (train_loss/batch_idx, acc)
 
 
@@ -303,8 +310,13 @@ def test(epoch):
 print('\n==> Start training')
 
 for epoch in range(start_epoch, args.n_epoch):
+    # compute current gradual exit rate
+    rate = np.clip(args.freeze_rate * epoch / (args.freeze_end - 1),
+                   0, args.freeze_rate) if args.freeze_end >= 0 else 0
+    mask = torch.randperm(num_params, device='cuda', dtype=torch.long)[:int(rate * num_params)]
+
     lr = adjust_learning_rate(optimizer, args.lr, epoch, all_epoch=args.n_epoch)
-    train_loss, train_acc = train(epoch)
+    train_loss, train_acc = train(epoch, mask)
     test_loss, test_acc = test(epoch)
 
 res = pd.DataFrame({'best_acc': best_acc}, index=[0])
