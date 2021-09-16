@@ -33,6 +33,7 @@ parser.add_argument('--batchsize', default=1000, type=int, help='batch size')
 parser.add_argument('--batch_partitions', default=1, type=int, help='partitioni into small batches')
 parser.add_argument('--n_epoch', default=200, type=int, help='total number of epochs')
 parser.add_argument('--lr', default=0.1, type=float, help='base learning rate (default=0.1)')
+parser.add_argument('--lr_decay_false', action='store_true', help='shut down learning rate decay.')
 parser.add_argument('--momentum', default=0.9, type=float, help='value of momentum')
 
 
@@ -268,8 +269,8 @@ def train(epoch, mask):
         correct += predicted.eq(targets.data).float().cpu().sum()
         acc = 100.*float(correct)/float(total)
     t1 = time.time()
-    print('Train loss:%.5f' % (train_loss/(batch_idx+1)), 'time: %d s' % (t1-t0), 'train acc:.1f' % acc,
-          'sparsity:.1f' % mask.numel()/num_params, end=' ')
+    print('Train loss:%.5f' % (train_loss/(batch_idx+1)), 'time: %d s' % (t1-t0), 'train acc:%.1f' % acc,
+          'sparsity:%.1f' % mask.numel()/num_params, end=' ')
     return (train_loss/batch_idx, acc)
 
 
@@ -315,7 +316,8 @@ for epoch in range(start_epoch, args.n_epoch):
                    0, args.freeze_rate) if args.freeze_end >= 0 else 0
     mask = torch.randperm(num_params, device='cuda', dtype=torch.long)[:int(rate * num_params)]
 
-    lr = adjust_learning_rate(optimizer, args.lr, epoch, all_epoch=args.n_epoch)
+    if not args.lr_decay_false:
+        lr = adjust_learning_rate(optimizer, args.lr, epoch, all_epoch=args.n_epoch)
     train_loss, train_acc = train(epoch, mask)
     test_loss, test_acc = test(epoch)
 
