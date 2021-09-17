@@ -27,7 +27,7 @@ parser.add_argument('--dataset', default='cifar10', type=str, help='dataset name
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 parser.add_argument('--sess', default='resnet20_cifar10', type=str, help='session name')
 parser.add_argument('--seed', default=-1, type=int, help='random seed')
-parser.add_argument('--process', default=-0, type=int, help='process number')
+parser.add_argument('--process', default='', type=str, help='process number')
 parser.add_argument('--weight_decay', default=2e-4, type=float, help='weight decay')
 parser.add_argument('--batchsize', default=1000, type=int, help='batch size')
 parser.add_argument('--batch_partitions', default=1, type=int, help='partitioni into small batches')
