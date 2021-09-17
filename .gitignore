@@ -5,3 +5,4 @@ checkpoint
 env
 approx_errors
 bk
+*.csv
