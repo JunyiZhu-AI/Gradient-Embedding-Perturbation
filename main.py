@@ -241,12 +241,13 @@ def train(epoch, mask):
             grad_noise = torch.normal(0, noise_multiplier1*args.clip1/args.batchsize, size=residual.shape, device=residual.device)
             theta = theta / args.batch_partitions + theta_noise
             residual = residual / args.batch_partitions + grad_noise
+            residual[mask] = 0
             ## update with Biased-GEP or GEP
             if(args.rgp):
                 noisy_grad = gep.get_approx_grad(theta) + residual
             else:
                 noisy_grad = gep.get_approx_grad(theta)
-            noisy_grad[mask] = 0
+            assert (noisy_grad[mask] == 0).all()
 
             ## make use of noisy gradients
             offset = 0
