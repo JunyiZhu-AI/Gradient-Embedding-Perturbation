@@ -268,7 +268,7 @@ def train(epoch, mask):
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
         correct += predicted.eq(targets.data).float().cpu().sum()
-        acc = 100.*float(correct)/float(total)
+    acc = 100.*float(correct)/float(total)
     t1 = time.time()
     print(f'Train loss:{train_loss/(batch_idx+1):.2f}, time: {t1-t0}, train acc: {acc:.2f}, ' +
           f'sparsity: {mask.numel()/num_params:.2f}')
