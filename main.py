@@ -34,6 +34,7 @@ parser.add_argument('--batch_partitions', default=1, type=int, help='partitioni 
 parser.add_argument('--n_epoch', default=200, type=int, help='total number of epochs')
 parser.add_argument('--lr', default=0.1, type=float, help='base learning rate (default=0.1)')
 parser.add_argument('--lr_decay_false', action='store_true', help='shut down learning rate decay.')
+parser.add_argument('--augmentation_false', action='store_true', help='shut down data augmentation.')
 parser.add_argument('--momentum', default=0.9, type=float, help='value of momentum')
 
 
@@ -78,7 +79,8 @@ if(args.seed != -1):
 print('==> Preparing data..')
 ## preparing data for training && testing
 if(args.dataset == 'svhn'):  ## For SVHN, we concatenate training samples and extra samples to build the training set.
-    trainloader, extraloader, testloader, n_training, n_test = get_data_loader('svhn', batchsize=batchsize)
+    trainloader, extraloader, testloader, n_training, n_test = get_data_loader('svhn', batchsize=batchsize,
+                                                                               augmentation_false=args.augmentation_false)
     for train_samples, train_labels in trainloader:
         break
     for extra_samples, extra_labels in extraloader:
