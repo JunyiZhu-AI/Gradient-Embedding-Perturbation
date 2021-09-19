@@ -89,7 +89,8 @@ if(args.dataset == 'svhn'):  ## For SVHN, we concatenate training samples and ex
     train_labels = torch.cat([train_labels, extra_labels], dim=0)
 
 else:
-    trainloader, testloader, n_training, n_test = get_data_loader('cifar10', batchsize=batchsize)
+    trainloader, testloader, n_training, n_test = get_data_loader('cifar10', batchsize=batchsize,
+                                                                  augmentation_false=args.augmentation_false)
     train_samples, train_labels = None, None
 ## preparing auxiliary data
 num_public_examples = args.aux_data_size
