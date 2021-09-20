@@ -26,11 +26,10 @@ parser = argparse.ArgumentParser(description='Differentially Private learning wi
 parser.add_argument('--dataset', default='cifar10', type=str, help='dataset name')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 parser.add_argument('--sess', default='resnet20_cifar10', type=str, help='session name')
-parser.add_argument('--seed', default=-1, type=int, help='random seed')
+parser.add_argument('--seed', default=2, type=int, help='random seed')
 parser.add_argument('--process', default='', type=str, help='process number')
 parser.add_argument('--weight_decay', default=2e-4, type=float, help='weight decay')
 parser.add_argument('--batchsize', default=1000, type=int, help='batch size')
-parser.add_argument('--batch_partitions', default=1, type=int, help='partitioni into small batches')
 parser.add_argument('--n_epoch', default=200, type=int, help='total number of epochs')
 parser.add_argument('--lr', default=0.1, type=float, help='base learning rate (default=0.1)')
 parser.add_argument('--lr_decay_false', action='store_true', help='shut down learning rate decay.')
@@ -44,7 +43,7 @@ parser.add_argument('--eps', default=8., type=float, help='privacy parameter eps
 parser.add_argument('--delta', default=1e-5, type=float, help='desired delta')
 parser.add_argument('--freeze_end', default=-1, type=int, help='Gradual exit end epoch.')
 parser.add_argument('--freeze_rate', default=0, type=float, help='Percentage of paramters get exited finally.')
-
+1
 parser.add_argument('--rgp', action='store_true', help='use residual gradient perturbation or not')
 parser.add_argument('--clip0', default=5., type=float, help='clipping threshold for gradient embedding')
 parser.add_argument('--clip1', default=2., type=float, help='clipping threshold for residual gradients')
@@ -68,7 +67,7 @@ if(args.real_labels):
 use_cuda = True
 best_acc = 0  
 start_epoch = 0  
-batchsize = args.batchsize // args.batch_partitions
+batchsize = args.batchsize
 
 if(args.seed != -1): 
     torch.manual_seed(args.seed)
@@ -79,7 +78,7 @@ if(args.seed != -1):
 print('==> Preparing data..')
 ## preparing data for training && testing
 if(args.dataset == 'svhn'):  ## For SVHN, we concatenate training samples and extra samples to build the training set.
-    trainloader, extraloader, testloader, n_training, n_test = get_data_loader('svhn', batchsize=batchsize,
+    trainloader, extraloader, testloader, n_training, n_test = get_data_loader('svhn', batchsize=args.batchsize,
                                                                                augmentation_false=args.augmentation_false)
     for train_samples, train_labels in trainloader:
         break
@@ -89,7 +88,7 @@ if(args.dataset == 'svhn'):  ## For SVHN, we concatenate training samples and ex
     train_labels = torch.cat([train_labels, extra_labels], dim=0)
 
 else:
-    trainloader, testloader, n_training, n_test = get_data_loader('cifar10', batchsize=batchsize,
+    trainloader, testloader, n_training, n_test = get_data_loader('cifar10', batchsize=args.batchsize,
                                                                   augmentation_false=args.augmentation_false)
     train_samples, train_labels = None, None
 ## preparing auxiliary data
@@ -122,7 +121,7 @@ noise_multiplier0 = noise_multiplier1 = sigma
 print('noise scale for gradient embedding: ', noise_multiplier0, 'noise scale for residual gradient: ', noise_multiplier1, '\n rgp enabled: ', args.rgp, 'privacy guarantee: ', eps)
 
 print('\n==> Creating GEP class instance')
-gep = GEP(args.num_bases, batchsize, args.clip0, args.clip1, args.power_iter).cuda()
+gep = GEP(args.num_bases, args.batchsize, args.clip0, args.clip1, args.power_iter).cuda()
 ## attach auxiliary data to GEP instance
 gep.public_inputs = public_inputs
 gep.public_targets = public_targets
@@ -194,7 +193,7 @@ def train(epoch, mask):
     correct = 0
     total = 0
     t0 = time.time()
-    steps = n_training//batchsize
+    steps = n_training//args.batchsize
 
     if(train_samples == None): # using pytorch data loader for CIFAR10
         loader = iter(trainloader)
@@ -202,12 +201,9 @@ def train(epoch, mask):
         sample_idxes = np.arange(n_training)
         np.random.shuffle(sample_idxes)
 
-    theta = torch.zeros([999], dtype=torch.float32, device='cuda')
-    residual = torch.zeros([num_params], dtype=torch.float32, device='cuda')
-    mini_batch = 0
     for batch_idx in range(steps):
         if(args.dataset=='svhn'):
-            current_batch_idxes = sample_idxes[batch_idx*batchsize : (batch_idx+1)*batchsize]
+            current_batch_idxes = sample_idxes[batch_idx*args.batchsize : (batch_idx+1)*batchsize]
             inputs, targets = train_samples[current_batch_idxes], train_labels[current_batch_idxes]
         else:
             inputs, targets = next(loader)
@@ -217,8 +213,7 @@ def train(epoch, mask):
         logging = batch_idx % 20 == 0
         ## compute anchor subspace
         optimizer.zero_grad()
-        if mini_batch == 0:
-            net.gep.get_anchor_space(net, loss_func=loss_func, mask=mask, logging=logging)
+        net.gep.get_anchor_space(net, loss_func=loss_func, mask=mask, logging=logging)
         ## collect batch gradients
         batch_grad = []
         optimizer.zero_grad()
@@ -234,36 +229,28 @@ def train(epoch, mask):
             grad[mask] = 0
         ## compute gradient embeddings and residual gradients
         clipped_theta, residual_grad, _ = net.gep(batch_grad, logging=logging)
-        theta += clipped_theta
-        residual += residual_grad
-        mini_batch += 1
 
-        if mini_batch == args.batch_partitions:
-            ## add noise to guarantee differential privacy
-            theta_noise = torch.normal(0, noise_multiplier0*args.clip0/args.batchsize, size=theta.shape, device=theta.device)
-            grad_noise = torch.normal(0, noise_multiplier1*args.clip1/args.batchsize, size=residual.shape, device=residual.device)
-            theta = theta / args.batch_partitions + theta_noise
-            residual = residual / args.batch_partitions + grad_noise
-            residual[mask] = 0
-            ## update with Biased-GEP or GEP
-            if(args.rgp):
-                noisy_grad = gep.get_approx_grad(theta) + residual
-            else:
-                noisy_grad = gep.get_approx_grad(theta)
-            assert (noisy_grad[mask] == 0).all()
+        ## add noise to guarantee differential privacy
+        theta_noise = torch.normal(0, noise_multiplier0*args.clip0/args.batchsize, size=clipped_theta.shape, device=clipped_theta.device)
+        grad_noise = torch.normal(0, noise_multiplier1*args.clip1/args.batchsize, size=residual_grad.shape, device=residual_grad.device)
+        clipped_theta += theta_noise
+        residual_grad += grad_noise
+        residual_grad[mask] = 0
+        ## update with Biased-GEP or GEP
+        if(args.rgp):
+            noisy_grad = gep.get_approx_grad(clipped_theta) + residual_grad
+        else:
+            noisy_grad = gep.get_approx_grad(clipped_theta)
+        assert (noisy_grad[mask] == 0).all()
 
-            ## make use of noisy gradients
-            offset = 0
-            for p in net.parameters():
-                shape = p.grad.shape
-                numel = p.grad.numel()
-                p.grad.data = noisy_grad[offset:offset+numel].view(shape) #+ 0.1*torch.mean(pub_grad, dim=0).view(shape)
-                offset += numel
-            optimizer.step()
-
-            mini_batch = 0
-            theta = torch.zeros([999], dtype=torch.float32, device='cuda')
-            residual = torch.zeros([num_params], dtype=torch.float32, device='cuda')
+        ## make use of noisy gradients
+        offset = 0
+        for p in net.parameters():
+            shape = p.grad.shape
+            numel = p.grad.numel()
+            p.grad.data = noisy_grad[offset:offset+numel].view(shape) #+ 0.1*torch.mean(pub_grad, dim=0).view(shape)
+            offset += numel
+        optimizer.step()
 
         step_loss = loss.item()
         step_loss /= inputs.shape[0]
