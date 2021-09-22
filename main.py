@@ -43,7 +43,6 @@ parser.add_argument('--eps', default=8., type=float, help='privacy parameter eps
 parser.add_argument('--delta', default=1e-5, type=float, help='desired delta')
 parser.add_argument('--freeze_end', default=-1, type=int, help='Gradual exit end epoch.')
 parser.add_argument('--freeze_rate', default=0, type=float, help='Percentage of paramters get exited finally.')
-1
 parser.add_argument('--rgp', action='store_true', help='use residual gradient perturbation or not')
 parser.add_argument('--clip0', default=5., type=float, help='clipping threshold for gradient embedding')
 parser.add_argument('--clip1', default=2., type=float, help='clipping threshold for residual gradients')
