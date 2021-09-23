@@ -27,7 +27,9 @@ parser.add_argument('--dataset', default='cifar10', type=str, help='dataset name
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 parser.add_argument('--sess', default='resnet20_cifar10', type=str, help='session name')
 parser.add_argument('--seed', default=2, type=int, help='random seed')
-parser.add_argument('--process', default='', type=str, help='process number')
+parser.add_argument('--process', default=0, type=int, help='process number')
+parser.add_argument('--path_to_result', default='', type=str)
+parser.add_argument('--subdir', default='', type=str)
 parser.add_argument('--weight_decay', default=2e-4, type=float, help='weight decay')
 parser.add_argument('--batchsize', default=1000, type=int, help='batch size')
 parser.add_argument('--n_epoch', default=200, type=int, help='total number of epochs')
@@ -141,7 +143,7 @@ if(args.resume):
     except:
         print('resume from checkpoint failed')
 else:
-    net = resnet20() 
+    net = resnet20()
     net.cuda()
 
 net = extend(net)
@@ -311,9 +313,9 @@ for epoch in range(start_epoch, args.n_epoch):
     train_loss, train_acc = train(epoch, mask)
     test_loss, test_acc = test(epoch)
 
-res = pd.DataFrame({'best_acc': best_acc}, index=[0])
-res.to_csv(f'./{args.process}res.csv', index=False)
-
+path = os.path.join(args.path_to_result, args.subdir, str(args.process))
+df = pd.DataFrame({'best_acc': best_acc}, index=[0])
+df.to_csv(os.path.join(path, f'res.csv'), index=False)
 
 # try:
 #     os.mkdir('approx_errors')
