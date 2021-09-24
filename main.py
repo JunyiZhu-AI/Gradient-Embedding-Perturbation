@@ -314,6 +314,8 @@ for epoch in range(start_epoch, args.n_epoch):
     test_loss, test_acc = test(epoch)
 
 path = os.path.join(args.path_to_result, args.subdir, str(args.process))
+if not os.path.exists(path):
+    os.makedirs(path)
 df = pd.DataFrame({'best_acc': best_acc}, index=[0])
 df.to_csv(os.path.join(path, f'res.csv'), index=False)
 
