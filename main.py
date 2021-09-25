@@ -187,7 +187,7 @@ optimizer = optim.SGD(
         momentum=args.momentum, 
         weight_decay=args.weight_decay)
 
-def train(epoch, mask):
+def train(epoch, rate):
     print('\nEpoch: %d' % epoch)
     net.train()
     train_loss = 0
@@ -203,6 +203,7 @@ def train(epoch, mask):
         np.random.shuffle(sample_idxes)
 
     for batch_idx in range(steps):
+        mask = torch.randperm(num_params, device='cuda', dtype=torch.long)[:int(rate * num_params)]
         if(args.dataset=='svhn'):
             current_batch_idxes = sample_idxes[batch_idx*args.batchsize : (batch_idx+1)*batchsize]
             inputs, targets = train_samples[current_batch_idxes], train_labels[current_batch_idxes]
@@ -306,11 +307,10 @@ for epoch in range(start_epoch, args.n_epoch):
     # compute current gradual exit rate
     rate = np.clip(args.freeze_rate * epoch / (args.freeze_end - 1),
                    0, args.freeze_rate) if args.freeze_end >= 0 else 0
-    mask = torch.randperm(num_params, device='cuda', dtype=torch.long)[:int(rate * num_params)]
 
     if not args.lr_decay_false:
         lr = adjust_learning_rate(optimizer, args.lr, epoch, all_epoch=args.n_epoch)
-    train_loss, train_acc = train(epoch, mask)
+    train_loss, train_acc = train(epoch, rate)
     test_loss, test_acc = test(epoch)
 
 path = os.path.join(args.path_to_result, args.subdir, str(args.process))
