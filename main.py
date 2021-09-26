@@ -305,7 +305,8 @@ print('\n==> Start training')
 path = os.path.join(args.path_to_result, args.subdir, str(args.process))
 if not os.path.exists(path):
     os.makedirs(path)
-elif not os.path.isfile(os.path.join(path, 'res.csv')):
+
+if not os.path.isfile(os.path.join(path, 'res.csv')):
     for epoch in range(start_epoch, args.n_epoch):
         # compute current gradual exit rate
         rate = np.clip(args.freeze_rate * epoch / (args.freeze_end - 1),
