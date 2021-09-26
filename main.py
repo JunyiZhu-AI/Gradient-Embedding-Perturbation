@@ -302,22 +302,23 @@ def test(epoch):
 
 print('\n==> Start training')
 
-for epoch in range(start_epoch, args.n_epoch):
-    # compute current gradual exit rate
-    rate = np.clip(args.freeze_rate * epoch / (args.freeze_end - 1),
-                   0, args.freeze_rate) if args.freeze_end >= 0 else 0
-    mask = torch.randperm(num_params, device='cuda', dtype=torch.long)[:int(rate * num_params)]
-
-    if not args.lr_decay_false:
-        lr = adjust_learning_rate(optimizer, args.lr, epoch, all_epoch=args.n_epoch)
-    train_loss, train_acc = train(epoch, mask)
-    test_loss, test_acc = test(epoch)
-
 path = os.path.join(args.path_to_result, args.subdir, str(args.process))
 if not os.path.exists(path):
     os.makedirs(path)
-df = pd.DataFrame({'best_acc': best_acc}, index=[0])
-df.to_csv(os.path.join(path, f'res.csv'), index=False)
+elif not os.path.isfile(os.path.join(path, 'res.csv')):
+    for epoch in range(start_epoch, args.n_epoch):
+        # compute current gradual exit rate
+        rate = np.clip(args.freeze_rate * epoch / (args.freeze_end - 1),
+                       0, args.freeze_rate) if args.freeze_end >= 0 else 0
+        mask = torch.randperm(num_params, device='cuda', dtype=torch.long)[:int(rate * num_params)]
+
+        if not args.lr_decay_false:
+            lr = adjust_learning_rate(optimizer, args.lr, epoch, all_epoch=args.n_epoch)
+        train_loss, train_acc = train(epoch, mask)
+        test_loss, test_acc = test(epoch)
+
+    df = pd.DataFrame({'best_acc': best_acc}, index=[0])
+    df.to_csv(os.path.join(path, f'res.csv'), index=False)
 
 # try:
 #     os.mkdir('approx_errors')
