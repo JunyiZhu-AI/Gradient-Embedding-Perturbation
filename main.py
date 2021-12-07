@@ -59,7 +59,7 @@ parser.add_argument('--aux_data_size', default=2000, type=int, help='size of the
 
 args = parser.parse_args()
 
-os.chdir(os.path.dirname(__file__))
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 assert args.dataset in ['cifar10', 'svhn']
 assert args.aux_dataset in ['cifar10', 'cifar100', 'imagenet']
 if(args.real_labels):
