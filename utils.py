@@ -63,7 +63,7 @@ def loop_for_sigma(q, T, eps, delta, cur_sigma, interval, rdp_orders=32, rgp=Tru
             rdp = compute_rdp(q, cur_sigma, steps, orders) * 2 ## when using residual gradients, the sensitivity is sqrt(2)
         else:
             rdp = compute_rdp(q, cur_sigma, steps, orders)
-        cur_eps, _, opt_order = get_privacy_spent(orders, rdp, delta)
+        cur_eps, _ = get_privacy_spent(orders, rdp, delta)
         if(cur_eps<eps and cur_sigma>interval):
             cur_sigma -= interval
             previous_eps = cur_eps
