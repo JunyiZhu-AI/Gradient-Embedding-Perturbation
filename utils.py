@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 import torchvision
+import tqdm
 import torchvision.transforms as transforms
 
 import os
@@ -19,13 +20,13 @@ def get_data_loader(dataset, batchsize, augmentation_false):
             transforms.ToTensor(),
             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         ])
-        trainset = torchvision.datasets.SVHN('./data',split='train', download=True, transform=transform)
+        trainset = torchvision.datasets.SVHN('./data', split='train', download=True, transform=transform)
         trainloader = torch.utils.data.DataLoader(trainset, batch_size=73257, shuffle=True, num_workers=0) #load full btach into memory, to concatenate with extra data
 
-        extraset = torchvision.datasets.SVHN('./data',split='extra', download=True, transform=transform)
+        extraset = torchvision.datasets.SVHN('./data', split='extra', download=True, transform=transform)
         extraloader = torch.utils.data.DataLoader(extraset, batch_size=531131, shuffle=True, num_workers=0) #load full btach into memory
 
-        testset = torchvision.datasets.SVHN('./data',split='test', download=True, transform=transform)
+        testset = torchvision.datasets.SVHN('./data', split='test', download=True, transform=transform)
         testloader = torch.utils.data.DataLoader(testset, batch_size=batchsize, shuffle=False, num_workers=0)
         return trainloader, extraloader, testloader, len(trainset)+len(extraset), len(testset)
     else:
@@ -46,13 +47,55 @@ def get_data_loader(dataset, batchsize, augmentation_false):
             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         ])
 
-        trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train) 
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size=batchsize, shuffle=True, num_workers=2)
+        # trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
+        # trainloader = torch.utils.data.DataLoader(trainset, batch_size=batchsize, shuffle=True, num_workers=2)
+        trainset = CachedCIFAR10(root='./data', train=True, download=True, wrapper_transform=transform_train)
+        testset = CachedCIFAR10(root='./data', train=False, download=True, wrapper_transform=transform_test)
+        # testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
+        # testloader = torch.utils.data.DataLoader(testset, batch_size=batchsize, shuffle=False, num_workers=2)
 
-        testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test) 
-        testloader = torch.utils.data.DataLoader(testset, batch_size=batchsize, shuffle=False, num_workers=2)
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=batchsize, shuffle=False, num_workers=0)
+        testloader = torch.utils.data.DataLoader(testset, batch_size=batchsize, shuffle=False, num_workers=0)
+        t_trainloader = tqdm.tqdm(trainloader)
+        for _ in t_trainloader:
+            t_trainloader.set_description(f'Cached training data: {len(trainloader.dataset.cached_data)}')
+        t_testloader = tqdm.tqdm(testloader)
+        for _ in t_testloader:
+            t_testloader.set_description(f'Cached training data: {len(testloader.dataset.cached_data)}')
+        trainloader.dataset.set_use_cache(use_cache=True)
+        trainloader.num_workers = 2
+        testloader.dataset.set_use_cache(use_cache=True)
+        testloader.num_workers = 2
         return trainloader, testloader, len(trainset), len(testset)
 
+
+class CachedCIFAR10(torchvision.datasets.CIFAR10):
+    def __init__(self, root, train, download, wrapper_transform, use_cache=False):
+        super(CachedCIFAR10, self).__init__(root=root, train=train, transform=None, download=download)
+        self.cached_data = []
+        self.cached_target = []
+        self.use_cache = use_cache
+        self.wrapper_transform = wrapper_transform
+
+    def __getitem__(self, index):
+        if not self.use_cache:
+            img, label = super(CachedCIFAR10, self).__getitem__(index)
+            self.cached_data.append(img)
+            self.cached_target.append(label)
+        else:
+            img, label = self.cached_data[index], self.cached_target[index]
+        if self.wrapper_transform is not None:
+            img = self.wrapper_transform(img)
+        return img, label
+
+    def set_use_cache(self, use_cache):
+        if use_cache:
+            self.cached_data = np.stack(self.cached_data, axis=0)
+            self.cached_target = np.stack(self.cached_target, axis=0)
+        else:
+            self.cached_data = []
+            self.cached_target = []
+        self.use_cache = use_cache
 
 
 def loop_for_sigma(q, T, eps, delta, cur_sigma, interval, rdp_orders=32, rgp=True):
