@@ -9,7 +9,9 @@ import os
 
 import numpy as np
 
-from rdp_accountant import compute_rdp, get_privacy_spent
+# from rdp_accountant import compute_rdp, get_privacy_spent
+from opacus.privacy_analysis import compute_rdp, get_privacy_spent
+
 
 def get_data_loader(dataset, batchsize, augmentation_false):
     if(dataset == 'svhn'):
