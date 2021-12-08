@@ -319,7 +319,12 @@ if not os.path.isfile(os.path.join(path, 'res.csv')):
         test_loss, test_acc = test(epoch)
 
     df = pd.DataFrame({'best_acc': best_acc}, index=[0])
-    df.to_csv(os.path.join(path, f'res.csv'), index=False)
+    while True:
+        try:
+            df.to_csv(os.path.join(path, f'res.csv'), index=False)
+            break
+        except:
+            time.sleep(30)
 
 # try:
 #     os.mkdir('approx_errors')
