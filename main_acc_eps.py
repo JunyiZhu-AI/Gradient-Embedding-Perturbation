@@ -321,7 +321,7 @@ if not os.path.isfile(os.path.join(path, 'res.csv')):
         test_loss, test_acc = test(epoch)
         orders = [1 + x / 10. for x in range(1, 100)] + list(range(12, 64))
         T = (epoch + 1) * len(trainloader.dataset) // args.batchsize
-        rdp = privacy_analysis.compute_rdp(sampling_prob, sigma, T, orders)
+        rdp = privacy_analysis.compute_rdp(sampling_prob, sigma, T, orders) * 2
         cur_eps, _, = privacy_analysis.get_privacy_spent(orders, rdp, args.delta)
         df = pd.DataFrame({'test_acc': test_acc, 'train_acc': train_acc, 'epsilon': cur_eps, 'epoch': epoch + 1},
                           index=[0])
